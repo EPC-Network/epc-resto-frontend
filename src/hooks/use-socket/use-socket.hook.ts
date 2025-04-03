@@ -1,13 +1,14 @@
 import { io, Socket } from 'socket.io-client';
-import { useState } from 'react';
-import { useDidMount, useDidUpdate } from '@better-hooks/lifecycle';
+import { useRef, useState } from 'react';
+import { useDidMount } from '@better-hooks/lifecycle';
 
 import { BaseListeners, SocketInstance, SocketListenerObject, SocketArguments } from './use-socket.types';
 
 import { environment } from '@/config';
 
 export const useSocket = <T extends SocketListenerObject>({ namespace }: SocketArguments) => {
-  const [socket, setSocket] = useState<SocketInstance<T> | null>(null);
+  const socket = useRef<SocketInstance<T> | null>(null);
+
   const [isConnected, setConnected] = useState<boolean>(false);
 
   const listenerHandlers: BaseListeners = {
@@ -46,24 +47,20 @@ export const useSocket = <T extends SocketListenerObject>({ namespace }: SocketA
   };
 
   useDidMount(() => {
-    const socketInstance: Socket<BaseListeners & Partial<T>> = io(environment.API_URL + namespace, {
+    socket.current = io(environment.API_URL + namespace, {
       autoConnect: false,
     });
 
-    setSocket(socketInstance);
+    const unmountListeners = mountListeners(socket.current);
+    socket.current.connect();
+
+    return () => {
+      socket.current?.disconnect();
+      unmountListeners();
+
+      socket.current = null;
+    };
   });
 
-  useDidUpdate(() => {
-    if (socket) {
-      const unmountListeners = mountListeners(socket);
-      socket.connect();
-
-      return () => {
-        socket.disconnect();
-        unmountListeners();
-      };
-    }
-  }, [socket]);
-
-  return { socket, isConnected };
+  return { socket: socket.current, isConnected };
 };
